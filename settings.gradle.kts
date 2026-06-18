@@ -23,4 +23,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "UTNGRunner"
-include(":app")
+include(":wear")
