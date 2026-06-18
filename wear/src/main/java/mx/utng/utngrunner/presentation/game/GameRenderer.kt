@@ -4,6 +4,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.nativeCanvas
 import mx.utng.utngrunner.domain.model.*
 import kotlin.math.sin
 
@@ -62,18 +63,15 @@ object GameRenderer {
     }
  
     private fun drawPlayer(drawScope: DrawScope, player: Player, frame: Long) {
-        // Parpadeo de invencibilidad
         val alpha = if (player.isInvincible && (frame / 4) % 2 == 0L) 0.3f else 1f
         val yPos = player.y
  
-        // Cuerpo del personaje
         drawScope.drawRect(
             color = Color(0xFFE65100).copy(alpha = alpha),
             topLeft = Offset(player.x - 6f, yPos - 10f),
             size = Size(20f, 24f)
         )
  
-        // Casco UTNG
         drawScope.drawRect(
             color = Color(0xFF1A237E).copy(alpha = alpha),
             topLeft = Offset(player.x - 5f, yPos - 24f),
@@ -82,12 +80,32 @@ object GameRenderer {
     }
  
     private fun drawHUD(drawScope: DrawScope, size: Size, state: GameState) {
-        // Puntuación inferior
+        val paint = android.graphics.Paint().apply {
+            color = android.graphics.Color.WHITE
+            textSize = 24f
+            textAlign = android.graphics.Paint.Align.CENTER
+            isFakeBoldText = true
+        }
+        
+        val cx = size.width / 2f
+        
+        // Dibujar Score
+        drawScope.drawContext.canvas.nativeCanvas.drawText(
+            "${state.score} pts", cx, size.height - 30f, paint
+        )
+        
+        // Dibujar Heart Rate
+        paint.color = android.graphics.Color.RED
+        drawScope.drawContext.canvas.nativeCanvas.drawText(
+            "❤ ${state.heartRate} bpm", cx, 50f, paint
+        )
+        
+        // Vidas (Corazones pequeños)
         repeat(state.lives) { i ->
              drawScope.drawCircle(
                  color = Color.Red,
                  radius = 6f,
-                 center = Offset(20f + i * 20f, 40f)
+                 center = Offset(30f + i * 20f, 80f)
              )
         }
     }

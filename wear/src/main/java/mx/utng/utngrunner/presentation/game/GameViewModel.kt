@@ -34,6 +34,7 @@ class GameViewModel(
     init {
         loadHighScore()
         observeHeartRate()
+        heartRateSource.startMonitoring()
     }
  
     fun startGame() {
