@@ -1,0 +1,102 @@
+package mx.utng.utngrunner.presentation.game
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.launch
+import mx.utng.utngrunner.data.health.HeartRateDataSource
+import mx.utng.utngrunner.domain.model.GamePhase
+import mx.utng.utngrunner.domain.model.GameState
+import mx.utng.utngrunner.domain.model.Player
+import mx.utng.utngrunner.domain.usecase.GetHighScoreUseCase
+import mx.utng.utngrunner.domain.usecase.SaveHighScoreUseCase
+
+enum class HapticType { JUMP, HIT }
+
+class GameViewModel(
+    private val getHighScore: GetHighScoreUseCase,
+    private val saveHighScore: SaveHighScoreUseCase,
+    private val heartRateSource: HeartRateDataSource
+) : ViewModel() {
+ 
+    private val _state = MutableStateFlow(GameState())
+    val state: StateFlow<GameState> = _state.asStateFlow()
+
+    private val _hapticChannel = Channel<HapticType>(Channel.BUFFERED)
+    val hapticEvents = _hapticChannel.receiveAsFlow()
+ 
+    private var gameFrame = 0L
+    private var gameJob: Job? = null
+ 
+    init {
+        loadHighScore()
+        observeHeartRate()
+    }
+ 
+    fun startGame() {
+        _state.value = GameState(phase = GamePhase.PLAYING,
+                                 highScore = _state.value.highScore)
+        gameFrame = 0L
+        gameJob?.cancel()
+        gameJob = viewModelScope.launch {
+            // 60 fps → ~16ms por frame
+            while (_state.value.phase == GamePhase.PLAYING) {
+                delay(16L)
+                val currentState = _state.value
+                val nextState = GameEngine.updateWithState(currentState, gameFrame++)
+                
+                if (nextState.lives < currentState.lives) {
+                    _hapticChannel.trySend(HapticType.HIT)
+                }
+                
+                _state.value = nextState
+            }
+            if (_state.value.phase == GamePhase.DEAD) {
+                saveHighScore(_state.value.score)
+            }
+        }
+    }
+ 
+    fun onJump() {
+        val s = _state.value
+        when (s.phase) {
+            GamePhase.IDLE, GamePhase.DEAD -> startGame()
+            GamePhase.PLAYING -> {
+                if (!s.player.isJumping && s.player.y >= Player.FLOOR_Y - 5f) {
+                    _state.update { it.copy(player = it.player.copy(
+                        velocityY = Player.JUMP_VELOCITY, isJumping = true
+                    ))}
+                    _hapticChannel.trySend(HapticType.JUMP)
+                }
+            }
+            else -> {}
+        }
+    }
+ 
+    fun onSlide() {
+        if (_state.value.phase != GamePhase.PLAYING || _state.value.player.isJumping) return
+        _state.update { it.copy(player = it.player.copy(
+            slideFrames = Player.SLIDE_DURATION
+        ))}
+    }
+ 
+    private fun loadHighScore() {
+        viewModelScope.launch {
+            val hs = getHighScore()
+            _state.update { it.copy(highScore = hs) }
+        }
+    }
+ 
+    private fun observeHeartRate() {
+        viewModelScope.launch {
+            heartRateSource.heartRate.collect { bpm ->
+                _state.update { it.copy(heartRate = bpm) }
+            }
+        }
+    }
+ 
+    override fun onCleared() { gameJob?.cancel() }
+}
